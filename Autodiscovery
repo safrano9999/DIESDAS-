@@ -1,0 +1,55 @@
+
+• #!/usr/bin/env bash
+  set -euo pipefail
+
+  status="$(openclaw models status --json)"
+
+  mapfile -t providers < <(
+      {
+          for key in $(compgen -e); do
+              [[ "$key" == *_API_KEY ]] || continue
+              jq -r --arg source "env: $key" \
+                  '.auth.providers[]
+                   | select(.env.source? == $source)
+                   | .provider' <<<"$status"
+          done
+
+          [[ -z "${SAKANA_API_KEY:-}" ]] ||
+              printf '%s\n' sakana
+      } | sort -u
+  )
+
+  models="$({
+      for provider in "${providers[@]}"; do
+          catalog="$(
+              openclaw models list \
+                  --all \
+                  --provider "$provider" \
+                  --json 2>/dev/null || true
+          )"
+
+          jq -c '
+              .models[]
+              | select(
+                  .available == true
+                  and .missing == false
+              )
+              | {key: .key, value: {}}
+          ' <<<"$catalog" 2>/dev/null || true
+      done
+  } | jq -sc 'from_entries')"
+
+  [[ "$models" == '{}' ]] ||
+      openclaw config set \
+          agents.defaults.models \
+          "$models" \
+          --strict-json \
+          --merge
+
+  if [[ -f /named_volumes/CODEX_AUTH/auth.json ]]; then
+      for model in 5.5 5.4 5.4-mini; do
+          openclaw models aliases add \
+              "codex-$model" \
+              "openai/gpt-$model"
+      done
+  fi
