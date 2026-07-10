@@ -19,6 +19,11 @@ def fetch(base, key):
     req = urllib.request.Request(base + "/models", headers={"Authorization": f"Bearer {key}"})
     with urllib.request.urlopen(req, timeout=20) as r:
         return sorted({str(x["id"]) for x in json.load(r).get("data", []) if x.get("id")})
+def codex_models():
+    r = subprocess.run(["codex", "debug", "models"], capture_output=True, text=True)
+    if r.returncode: return []
+    try: return sorted({str(x["slug"]) for x in json.loads(r.stdout).get("models", []) if x.get("slug")})
+    except Exception: return []
 providers, allow, primary, keys = {}, {}, None, {}
 idx = sorted({int(m.group(1) or 1) for k in os.environ for m in [re.match(r"OPENAI_V1_PROVIDER(?:_(\d+))?$", k)] if m})
 for i in idx:
@@ -34,8 +39,11 @@ for i in idx:
     providers.setdefault(provider, {"baseUrl": base, "api": "openai-completions", "request": {"allowPrivateNetwork": True}, "models": [{"id": x, "name": f"{provider}/{x}", "reasoning": True, "input": ["text"], "contextWindow": 128000, "maxTokens": 8192} for x in ids]})
     providers[provider]["apiKey"] = keys[provider][0]
     print(f"DISCOVER {provider}: {len(ids)} model(s)")
-if auth.is_file() and subprocess.run(["codex", "debug", "models"], capture_output=True).returncode == 0:
-    allow["openai/*"] = {}; primary = "openai/gpt-5.6-terra"
+if auth.is_file():
+    ids = codex_models()
+    if ids:
+        allow["openai/*"] = {}; primary = "openai/gpt-5.6-terra"
+        print(f"DISCOVER openai: {len(ids)} model(s)")
 d = json.loads(cfg.read_text()) if cfg.exists() and cfg.stat().st_size else {}
 d.setdefault("models", {})["mode"] = "merge"; d["models"]["providers"] = providers
 d.setdefault("agents", {}).setdefault("defaults", {})["models"] = allow
