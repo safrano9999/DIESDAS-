@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+import json, os, re, subprocess, urllib.request
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
+cfg = Path(os.getenv("OPENCLAW_CONFIG", "/root/.openclaw/openclaw.json")); auth = Path(os.getenv("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
+def c(v): return (v or "").strip().strip("\"'")
+def n(f, i):
+    if i == 1: return f"OPENAI_V1_{f}"
+    for s in (f"_{i}", f"_{i:02d}"):
+        k = f"OPENAI_V1_{f}{s}"
+        if k in os.environ: return k
+    return f"OPENAI_V1_{f}_{i}"
+def url(raw, port):
+    raw, port = c(raw).rstrip("/"), c(port)
+    if raw and "://" not in raw: raw = "http://" + raw
+    p = urlsplit(raw); net = f"{p.netloc}:{port}" if raw and port and p.port is None else p.netloc
+    return urlunsplit((p.scheme, net, p.path.rstrip("/") or "/v1", "", "")).rstrip("/") if raw else ""
+def fetch(base, key):
+    req = urllib.request.Request(base + "/models", headers={"Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return sorted({str(x["id"]) for x in json.load(r).get("data", []) if x.get("id")})
+providers, allow, primary, keys = {}, {}, None, {}
+idx = sorted({int(m.group(1) or 1) for k in os.environ for m in [re.match(r"OPENAI_V1_PROVIDER(?:_(\d+))?$", k)] if m})
+for i in idx:
+    provider, base = c(os.getenv(n("PROVIDER", i))), url(os.getenv(n("URL", i)), os.getenv(n("PORT", i)))
+    alias, keyname = c(os.getenv(n("API_KEY_ALIAS", i))), n("KEY", i)
+    keyname, key = (alias, c(os.getenv(alias))) if alias and c(os.getenv(alias)) else (keyname, c(os.getenv(keyname)))
+    if not provider or not key: print(f"SKIP OPENAI_V1_{i}: missing provider/key"); continue
+    ref = {"source": "env", "provider": "default", "id": keyname}; keys.setdefault(provider, [])
+    if ref not in keys[provider]: keys[provider].append(ref)
+    if provider in providers: providers[provider]["apiKey"] = keys[provider][-1]; print(f"ADDKEY {provider}: {keyname}"); continue
+    if not base: print(f"SKIP OPENAI_V1_{i}: missing url"); continue
+    ids = fetch(base, key); allow[f"{provider}/*"] = {}
+    providers.setdefault(provider, {"baseUrl": base, "api": "openai-completions", "request": {"allowPrivateNetwork": True}, "models": [{"id": x, "name": f"{provider}/{x}", "reasoning": True, "input": ["text"], "contextWindow": 128000, "maxTokens": 8192} for x in ids]})
+    providers[provider]["apiKey"] = keys[provider][0]
+    print(f"DISCOVER {provider}: {len(ids)} model(s)")
+if auth.is_file() and subprocess.run(["codex", "debug", "models"], capture_output=True).returncode == 0:
+    allow["openai/*"] = {}; primary = "openai/gpt-5.6-terra"
+d = json.loads(cfg.read_text()) if cfg.exists() and cfg.stat().st_size else {}
+d.setdefault("models", {})["mode"] = "merge"; d["models"]["providers"] = providers
+d.setdefault("agents", {}).setdefault("defaults", {})["models"] = allow
+if primary: d["agents"]["defaults"].setdefault("model", {})["primary"] = primary
+cfg.parent.mkdir(parents=True, exist_ok=True); cfg.write_text(json.dumps(d, indent=2) + "\n")
+print(f"WRITE providers={','.join(providers) or '-'} allow={','.join(allow) or '-'} primary={primary or '-'}")
