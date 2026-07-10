@@ -45,8 +45,12 @@ if auth.is_file():
         allow["openai/*"] = {}; primary = "openai/gpt-5.6-terra"
         print(f"DISCOVER openai: {len(ids)} model(s)")
 d = json.loads(cfg.read_text()) if cfg.exists() and cfg.stat().st_size else {}
-d.setdefault("models", {})["mode"] = "merge"; d["models"]["providers"] = providers
-d.setdefault("agents", {}).setdefault("defaults", {})["models"] = allow
-if primary: d["agents"]["defaults"].setdefault("model", {})["primary"] = primary
+if providers or allow or primary:
+    d.pop("models", None)
+    defaults = d.setdefault("agents", {}).setdefault("defaults", {})
+    defaults.pop("models", None); defaults.pop("model", None)
+    d["models"] = {"mode": "merge", "providers": providers}
+    defaults["models"] = allow
+    if primary: defaults["model"] = {"primary": primary}
 cfg.parent.mkdir(parents=True, exist_ok=True); cfg.write_text(json.dumps(d, indent=2) + "\n")
 print(f"WRITE providers={','.join(providers) or '-'} allow={','.join(allow) or '-'} primary={primary or '-'}")
