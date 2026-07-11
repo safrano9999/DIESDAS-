@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import json, os, re, urllib.request
+import json, os, re, subprocess, urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 cfg = Path(os.getenv("OPENCLAW_CONFIG", "/root/.openclaw/openclaw.json"))
@@ -46,3 +46,8 @@ if providers or allow:
     defaults.setdefault("models", {}).update(allow)
 cfg.parent.mkdir(parents=True, exist_ok=True); cfg.write_text(json.dumps(d, indent=2) + "\n")
 print(f"WRITE providers={','.join(providers) or '-'} allow={','.join(allow) or '-'}")
+
+# If Codex is not authenticated yet or this SQLite is not persistent, run: openclaw models auth login --provider openai --device-code
+auth_db = Path(os.getenv("OPENCLAW_HOME", "/root/.openclaw")) / "agents/main/agent/openclaw-agent.sqlite"
+if auth_db.is_file() and auth_db.stat().st_size:
+    subprocess.run(["openclaw", "config", "set", "agents.defaults.models", '{"openai/*":{}}', "--strict-json", "--merge"], check=True)
