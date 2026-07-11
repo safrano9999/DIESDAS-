@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-import json, os, re, subprocess, urllib.request
+import json, os, re, urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
-cfg = Path(os.getenv("OPENCLAW_CONFIG", "/root/.openclaw/openclaw.json")); codex_home = Path(os.getenv("CODEX_HOME", str(Path.home() / ".codex")))
-if (codex_home / "auth.json").is_file(): subprocess.run(["openclaw", "migrate", "codex", "--include-secrets", "--yes", "--no-backup", "--force"], check=False)
+cfg = Path(os.getenv("OPENCLAW_CONFIG", "/root/.openclaw/openclaw.json"))
 def c(v): return (v or "").strip().strip("\"'")
 def n(f, i):
     if i == 1: return f"OPENAI_V1_{f}"
@@ -20,17 +19,6 @@ def fetch(base, key):
     req = urllib.request.Request(base + "/models", headers={"Authorization": f"Bearer {key}"})
     with urllib.request.urlopen(req, timeout=20) as r:
         return sorted({str(x["id"]) for x in json.load(r).get("data", []) if x.get("id")})
-def codex_models():
-    r = subprocess.run(["codex", "debug", "models"], capture_output=True, text=True)
-    if r.returncode: return []
-    try: return sorted({str(x["slug"]) for x in json.loads(r.stdout).get("models", []) if x.get("slug")})
-    except Exception: return []
-def codex_auth_files():
-    found = []
-    for p in codex_home.glob("auth*.json"):
-        m = re.fullmatch(r"auth(?:_(\d+))?\.json", p.name)
-        if m and p.is_file(): found.append((0 if m.group(1) is None else int(m.group(1)), p.name, p))
-    return [p for _, _, p in sorted(found)]
 def model_entries(provider, ids, context=128000):
     return [{"id": x, "name": f"{provider}/{x}", "reasoning": True, "input": ["text"], "contextWindow": context, "maxTokens": 8192} for x in ids]
 providers, allow, keys = {}, {}, {}
@@ -48,14 +36,6 @@ for i in idx:
     providers.setdefault(provider, {"baseUrl": base, "api": "openai-completions", "request": {"allowPrivateNetwork": True}, "models": model_entries(provider, ids)})
     providers[provider]["apiKey"] = keys[provider][0]
     print(f"DISCOVER {provider}: {len(ids)} model(s)")
-auths = codex_auth_files()
-if auths:
-    ids = codex_models() if (codex_home / "auth.json").is_file() else []
-    allow["openai/*"] = {}
-    print(f"DISCOVER openai-auth: {','.join(p.name for p in auths)}")
-    if ids:
-        providers["openai"] = {"baseUrl": "https://api.openai.com/v1", "api": "openai-completions", "request": {"allowPrivateNetwork": True}, "models": model_entries("openai", ids, 1000000)}
-        print(f"DISCOVER openai: {len(ids)} model(s)")
 d = json.loads(cfg.read_text()) if cfg.exists() and cfg.stat().st_size else {}
 if providers or allow:
     model_cfg = d.setdefault("models", {})
