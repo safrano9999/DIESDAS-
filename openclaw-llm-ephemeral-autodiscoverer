@@ -32,7 +32,10 @@ for i in idx:
     if ref not in keys[provider]: keys[provider].append(ref)
     if provider in providers: providers[provider]["apiKey"] = keys[provider][-1]; print(f"ADDKEY {provider}: {keyname}"); continue
     if not base: print(f"SKIP OPENAI_V1_{i}: missing url"); continue
-    ids = fetch(base, key); allow[f"{provider}/*"] = {}
+    try: ids = fetch(base, key)
+    except Exception as e: print(f"SKIP {provider}: {e}"); continue
+    if not ids: print(f"SKIP {provider}: empty model list"); continue
+    allow[f"{provider}/*"] = {}
     providers.setdefault(provider, {"baseUrl": base, "api": "openai-completions", "request": {"allowPrivateNetwork": True}, "models": model_entries(provider, ids)})
     providers[provider]["apiKey"] = keys[provider][0]
     print(f"DISCOVER {provider}: {len(ids)} model(s)")
