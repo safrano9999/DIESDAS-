@@ -1,0 +1,11 @@
+{
+  "repository": "safrano9999/DIESDAS-",
+  "package": "grpcio",
+  "version": "1.83.1",
+  "fedora": "45",
+  "python_tag": "cp315",
+  "abi_tag": "cp315",
+  "platform_tag": "linux_x86_64",
+  "builder_image": "quay.io/fedora/fedora:45",
+  "release": "grpcio-1.83.1-fedora45-cp315-linux-x86_64"
+}

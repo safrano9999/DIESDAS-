@@ -1,0 +1,68 @@
+# Source of truth: SCRIPTS/githubactions. Generated copies are overwritten.
+name: Reusable Python wheels
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: diesdas-python-wheels
+  cancel-in-progress: false
+
+jobs:
+  grpcio:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve wheel and reuse an existing release
+        id: wheel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          s=json.loads(Path('python-wheels/grpcio.json').read_text())
+          filename='{package}-{version}-{python_tag}-{abi_tag}-{platform_tag}.whl'.format(**s)
+          result=subprocess.run(['gh','release','view',s['release'],'--repo',s['repository'],'--json','assets'],capture_output=True,text=True)
+          exists=result.returncode == 0
+          if exists:
+              names={a['name'] for a in json.loads(result.stdout)['assets']}
+              if not {filename,'manifest.json'} <= names:
+                  raise SystemExit('Existing wheel release is incomplete; refusing to overwrite it')
+              subprocess.run(['python3','python-wheels/wheel.py','fetch','dist'],check=True)
+          elif 'not found' not in result.stderr.lower() and '404' not in result.stderr:
+              raise SystemExit(result.stderr)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write(f"exists={str(exists).lower()}\nimage={s['builder_image']}\nrelease={s['release']}\n")
+          PY
+
+      - name: Build the wheel for Fedora 45 and Python 3.15
+        if: steps.wheel.outputs.exists != 'true'
+        env:
+          BUILDER_IMAGE: ${{ steps.wheel.outputs.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/workspace" -w /workspace -e GITHUB_SHA \
+            "$BUILDER_IMAGE" bash -lc '
+              set -euo pipefail
+              dnf -y install python3 python3-pip python3-devel gcc gcc-c++ make
+              python3 python-wheels/wheel.py build dist
+            '
+
+      - name: Publish the immutable wheel release
+        if: steps.wheel.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.wheel.outputs.release }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" dist/*.whl dist/manifest.json \
+            --target "$GITHUB_SHA" --title "$RELEASE_TAG" --latest=false \
+            --notes 'Reusable grpcio wheel for Fedora 45, CPython 3.15, Linux x86_64. Consumers verify the platform, version and SHA-256 from manifest.json.'
