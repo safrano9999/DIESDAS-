@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${FEDORA_BUILDTIME_LAYER:-}" == fedora45-ai-* ]] || exit 0
+: "${FEDORA_BUILDTIME_REPOSITORY_DIR:?}"
+: "${FEDORA_BUILDTIME_ARTIFACTS_DIR:?}"
+exec python3 "$FEDORA_BUILDTIME_REPOSITORY_DIR/python-wheels/wheel.py" \
+    fetch "$FEDORA_BUILDTIME_ARTIFACTS_DIR"

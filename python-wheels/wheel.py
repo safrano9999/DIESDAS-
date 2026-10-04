@@ -31,7 +31,8 @@ def compatible() -> None:
 
 
 def digest(path: Path) -> str:
-    return hashlib.file_digest(path.open("rb"), "sha256").hexdigest()
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def verify(directory: Path) -> Path:
