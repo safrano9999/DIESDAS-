@@ -1,0 +1,3 @@
+# Use upstream wheels; dependencies such as typing_extensions are resolved by pip.
+--only-binary=grpcio
+grpcio>=1.84.0
