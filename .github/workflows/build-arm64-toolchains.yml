@@ -36,10 +36,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/electrum-out"
+          # Keep the build definitions read-only and mount the output directory
+          # explicitly.  A path created inside the Fedora container is not
+          # assumed to be visible through the workspace bind mount.
           docker run --rm --platform linux/arm64 \
             -e ELECTRUM_VERSION="$VERSION" \
-            -e OUTPUT_DIR=/work/out \
-            -v "$GITHUB_WORKSPACE:/work" \
+            -e OUTPUT_DIR=/out \
+            -v "$GITHUB_WORKSPACE:/work:ro" \
+            -v "$RUNNER_TEMP/electrum-out:/out" \
             fedora:45 bash -Eeuo pipefail -c '
               dnf -y install \
                 ca-certificates git python3 python3-pip python3-devel \
@@ -51,7 +55,6 @@ jobs:
                 mesa-libGL-devel
               /work/scripts/build-electrum-arm64.sh
             '
-          cp -a /work/out/. "$RUNNER_TEMP/electrum-out/"
 
       - name: Upload Electrum artifact
         uses: actions/upload-artifact@v4
@@ -128,13 +131,17 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-      - name: Publish tagged release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            release_tag="arm64-electrum-${ELECTRUM_VERSION}-agave-${AGAVE_VERSION#v}"
+          else
+            release_tag="$GITHUB_REF_NAME"
+          fi
+          gh release create "$release_tag" dist/* \
             --title "ARM64 toolchains: Electrum $ELECTRUM_VERSION / Agave $AGAVE_VERSION" \
             --notes "Reproducible ARM64 runtime bundles built on GitHub's ubuntu-24.04-arm runner."
 
