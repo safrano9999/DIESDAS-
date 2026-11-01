@@ -1,0 +1,71 @@
+name: Publish ARM64 toolchains from run artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful Build ARM64 toolchains run whose artifacts should be published
+        required: true
+        type: string
+      electrum_version:
+        description: Electrum version used by the source run
+        required: true
+        default: 4.8.2
+        type: string
+      agave_version:
+        description: Agave version used by the source run
+        required: true
+        default: v4.3.2
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      ELECTRUM_VERSION: ${{ inputs.electrum_version }}
+      AGAVE_VERSION: ${{ inputs.agave_version }}
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+    steps:
+      - name: Download successful ARM64 run artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p dist/electrum dist/agave
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "electrum-${ELECTRUM_VERSION}-linux-arm64" \
+            --dir dist/electrum
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "agave-${AGAVE_VERSION}-linux-arm64" \
+            --dir dist/agave
+          cp dist/electrum/* dist/agave/* dist/
+          test -s "dist/electrum-${ELECTRUM_VERSION}-linux-arm64.tar.gz"
+          test -s "dist/agave-${AGAVE_VERSION#v}-linux-arm64.tar.gz"
+
+      - name: Write release manifest
+        run: |
+          set -Eeuo pipefail
+          sha256sum dist/*.tar.gz > dist/SHA256SUMS
+          jq -n \
+            --arg electrum "$ELECTRUM_VERSION" \
+            --arg agave "$AGAVE_VERSION" \
+            --arg arch linux/arm64 \
+            --argjson files "$(jq -Rn '[inputs | select(length > 0)]' < dist/SHA256SUMS)" \
+            '{schema:1, architecture:$arch, electrum:{version:$electrum}, agave:{version:$agave}, files:$files}' \
+            > dist/manifest.json
+
+      - name: Create deterministic release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          release_tag="arm64-electrum-${ELECTRUM_VERSION}-agave-${AGAVE_VERSION#v}"
+          gh release create "$release_tag" --repo "$GITHUB_REPOSITORY" dist/* \
+            --title "ARM64 toolchains: Electrum $ELECTRUM_VERSION / Agave $AGAVE_VERSION" \
+            --notes "Reproducible ARM64 runtime bundles built on GitHub's ubuntu-24.04-arm runner."

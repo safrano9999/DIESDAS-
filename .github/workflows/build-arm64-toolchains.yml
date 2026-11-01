@@ -141,7 +141,7 @@ jobs:
           else
             release_tag="$GITHUB_REF_NAME"
           fi
-          gh release create "$release_tag" dist/* \
+          gh release create "$release_tag" --repo "$GITHUB_REPOSITORY" dist/* \
             --title "ARM64 toolchains: Electrum $ELECTRUM_VERSION / Agave $AGAVE_VERSION" \
             --notes "Reproducible ARM64 runtime bundles built on GitHub's ubuntu-24.04-arm runner."
 
