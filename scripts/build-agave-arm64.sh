@@ -20,9 +20,13 @@ cargo build --locked --release \
   --package solana-cli \
   --package solana-keygen \
   --package agave-validator \
-  --package agave-ledger-tool \
   --package solana-gossip-cli \
   --package solana-faucet-cli
+
+# The ledger tool is maintained in Agave's separate dev-bins workspace.
+cargo build --locked --release \
+  --manifest-path dev-bins/Cargo.toml \
+  --package agave-ledger-tool
 
 mkdir -p "$stage_dir/solana-release/bin" "$OUTPUT_DIR"
 

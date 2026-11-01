@@ -43,7 +43,7 @@ jobs:
             fedora:45 bash -Eeuo pipefail -c '
               dnf -y install \
                 ca-certificates git python3 python3-pip python3-devel \
-                gcc gcc-c++ make pkgconf-pkg-config \
+                gcc gcc-c++ make autoconf automake libtool pkgconf-pkg-config \
                 openssl-devel libffi-devel sqlite-devel \
                 libusb1-devel libudev-devel zbar-devel gettext \
                 qt6-qtbase-devel qt6-qtdeclarative-devel \
