@@ -37,8 +37,12 @@ for binary in \
   agave-ledger-tool \
   solana-gossip \
   solana-faucet; do
-  test -x "target/release/$binary"
-  install -m 0755 "target/release/$binary" \
+  binary_path="target/release/$binary"
+  if [ "$binary" = agave-ledger-tool ]; then
+    binary_path="dev-bins/target/release/$binary"
+  fi
+  test -x "$binary_path"
+  install -m 0755 "$binary_path" \
     "$stage_dir/solana-release/bin/$binary"
 done
 

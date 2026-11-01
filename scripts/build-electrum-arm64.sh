@@ -21,7 +21,7 @@ python3 -m venv --copies "$venv_dir"
 "$venv_dir/bin/python" -m pip install --no-cache-dir "$source_dir[full]"
 
 QT_QPA_PLATFORM=offscreen \
-  "$venv_dir/bin/python" "$venv_dir/bin/electrum" --version
+  "$venv_dir/bin/python" "$venv_dir/bin/electrum" --offline --version
 
 mkdir -p "$stage_dir/opt/electrum" "$OUTPUT_DIR"
 cp -a "$venv_dir" "$stage_dir/opt/electrum/venv"
