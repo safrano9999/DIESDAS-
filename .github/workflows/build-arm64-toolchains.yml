@@ -1,0 +1,140 @@
+name: Build ARM64 toolchains
+
+on:
+  workflow_dispatch:
+    inputs:
+      electrum_version:
+        description: Electrum tag to build
+        required: true
+        default: 4.8.2
+      agave_version:
+        description: Agave tag to build
+        required: true
+        default: v4.3.2
+  push:
+    tags:
+      - arm64-*
+
+permissions:
+  contents: write
+
+env:
+  ELECTRUM_VERSION: ${{ inputs.electrum_version || '4.8.2' }}
+  AGAVE_VERSION: ${{ inputs.agave_version || 'v4.3.2' }}
+
+jobs:
+  electrum:
+    name: Electrum ARM64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Check out build definitions
+        uses: actions/checkout@v4
+
+      - name: Build Electrum runtime bundle in Fedora
+        env:
+          VERSION: ${{ env.ELECTRUM_VERSION }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/electrum-out"
+          docker run --rm --platform linux/arm64 \
+            -e ELECTRUM_VERSION="$VERSION" \
+            -e OUTPUT_DIR=/work/out \
+            -v "$GITHUB_WORKSPACE:/work" \
+            fedora:45 bash -Eeuo pipefail -c '
+              dnf -y install \
+                ca-certificates git python3 python3-pip python3-devel \
+                gcc gcc-c++ make pkgconf-pkg-config \
+                openssl-devel libffi-devel sqlite-devel \
+                libusb1-devel libudev-devel zbar-devel gettext \
+                qt6-qtbase-devel qt6-qtdeclarative-devel \
+                libX11-devel libxcb-devel libxkbcommon-devel \
+                mesa-libGL-devel
+              /work/scripts/build-electrum-arm64.sh
+            '
+          cp -a /work/out/. "$RUNNER_TEMP/electrum-out/"
+
+      - name: Upload Electrum artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: electrum-${{ env.ELECTRUM_VERSION }}-linux-arm64
+          path: ${{ runner.temp }}/electrum-out/
+          if-no-files-found: error
+
+  agave:
+    name: Agave/Solana ARM64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Check out build definitions
+        uses: actions/checkout@v4
+
+      - name: Install Agave build dependencies
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang cmake libclang-dev libssl-dev \
+            libudev-dev libprotobuf-dev llvm pkg-config \
+            protobuf-compiler zlib1g-dev
+          rustup show active-toolchain
+
+      - name: Build Agave runtime bundle
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/agave-out"
+          OUTPUT_DIR="$RUNNER_TEMP/agave-out" \
+            AGAVE_VERSION="$AGAVE_VERSION" \
+            ./scripts/build-agave-arm64.sh
+
+      - name: Upload Agave artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agave-${{ env.AGAVE_VERSION }}-linux-arm64
+          path: ${{ runner.temp }}/agave-out/
+          if-no-files-found: error
+
+  publish:
+    name: Publish ARM64 artifacts
+    needs: [electrum, agave]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Electrum artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: electrum-${{ env.ELECTRUM_VERSION }}-linux-arm64
+          path: dist
+
+      - name: Download Agave artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agave-${{ env.AGAVE_VERSION }}-linux-arm64
+          path: dist
+
+      - name: Write manifest
+        run: |
+          set -Eeuo pipefail
+          sha256sum dist/*.tar.gz > dist/SHA256SUMS
+          jq -n \
+            --arg electrum "$ELECTRUM_VERSION" \
+            --arg agave "$AGAVE_VERSION" \
+            --arg arch linux/arm64 \
+            --argjson files "$(jq -Rn '[inputs | select(length > 0)]' < dist/SHA256SUMS)" \
+            '{schema:1, architecture:$arch, electrum:{version:$electrum}, agave:{version:$agave}, files:$files}' \
+            > dist/manifest.json
+
+      - name: Upload combined artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm64-toolchains-${{ env.ELECTRUM_VERSION }}-${{ env.AGAVE_VERSION }}
+          path: dist/
+          if-no-files-found: error
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "ARM64 toolchains: Electrum $ELECTRUM_VERSION / Agave $AGAVE_VERSION" \
+            --notes "Reproducible ARM64 runtime bundles built on GitHub's ubuntu-24.04-arm runner."
+
