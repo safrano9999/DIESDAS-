@@ -66,6 +66,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           release_tag="arm64-electrum-${ELECTRUM_VERSION}-agave-${AGAVE_VERSION#v}"
-          gh release create "$release_tag" --repo "$GITHUB_REPOSITORY" dist/* \
+          release_files=(dist/*.tar.gz dist/*.sha256 dist/SHA256SUMS dist/manifest.json)
+          gh release create "$release_tag" --repo "$GITHUB_REPOSITORY" "${release_files[@]}" \
             --title "ARM64 toolchains: Electrum $ELECTRUM_VERSION / Agave $AGAVE_VERSION" \
             --notes "Reproducible ARM64 runtime bundles built on GitHub's ubuntu-24.04-arm runner."
