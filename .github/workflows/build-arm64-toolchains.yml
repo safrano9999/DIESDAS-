@@ -1,3 +1,4 @@
+# Source of truth: SCRIPTS/githubactions. Generated copies are overwritten.
 name: Build ARM64 toolchains
 
 on:
@@ -6,11 +7,19 @@ on:
       electrum_version:
         description: Electrum tag to build
         required: true
-        default: 4.8.2
+        default: 4.8.3
       agave_version:
         description: Agave tag to build
         required: true
         default: v4.3.2
+      reuse_agave_release:
+        description: Existing release containing the unchanged Agave native bundle
+        default: ""
+        type: string
+      reuse_agave_sha256:
+        description: Required SHA256 for an explicitly reused Agave bundle
+        default: ""
+        type: string
   push:
     tags:
       - arm64-*
@@ -19,7 +28,7 @@ permissions:
   contents: write
 
 env:
-  ELECTRUM_VERSION: ${{ inputs.electrum_version || '4.8.2' }}
+  ELECTRUM_VERSION: ${{ inputs.electrum_version || '4.8.3' }}
   AGAVE_VERSION: ${{ inputs.agave_version || 'v4.3.2' }}
 
 jobs:
@@ -44,7 +53,7 @@ jobs:
             -e OUTPUT_DIR=/out \
             -v "$GITHUB_WORKSPACE:/work:ro" \
             -v "$RUNNER_TEMP/electrum-out:/out" \
-            fedora:45 bash -Eeuo pipefail -c '
+            registry.fedoraproject.org/fedora:45@sha256:c15d8d6067038f1d6b10d8e1b8440f787a474fe6dc641ef77a5c74b1bf01a05d bash -Eeuo pipefail -c '
               dnf -y install \
                 ca-certificates git python3 python3-pip python3-devel \
                 gcc gcc-c++ make autoconf automake libtool pkgconf-pkg-config \
@@ -71,6 +80,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Agave build dependencies
+        if: inputs.reuse_agave_release == ''
         run: |
           set -Eeuo pipefail
           sudo apt-get update
@@ -81,12 +91,28 @@ jobs:
           rustup show active-toolchain
 
       - name: Build Agave runtime bundle
+        if: inputs.reuse_agave_release == ''
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/agave-out"
           OUTPUT_DIR="$RUNNER_TEMP/agave-out" \
             AGAVE_VERSION="$AGAVE_VERSION" \
             ./scripts/build-agave-arm64.sh
+
+      - name: Verify existing unchanged Agave bundle
+        if: inputs.reuse_agave_release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RELEASE: ${{ inputs.reuse_agave_release }}
+          EXPECTED_SHA256: ${{ inputs.reuse_agave_sha256 }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          file="agave-${AGAVE_VERSION#v}-linux-arm64.tar.gz"
+          mkdir -p "$RUNNER_TEMP/agave-out"
+          gh release download "$SOURCE_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern "$file" --dir "$RUNNER_TEMP/agave-out"
+          printf '%s  %s\n' "$EXPECTED_SHA256" "$RUNNER_TEMP/agave-out/$file" | sha256sum --check --strict -
+          sha256sum "$RUNNER_TEMP/agave-out/$file" > "$RUNNER_TEMP/agave-out/$file.sha256"
 
       - name: Upload Agave artifact
         uses: actions/upload-artifact@v4

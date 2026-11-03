@@ -1,3 +1,4 @@
+# Source of truth: SCRIPTS/githubactions. Generated copies are overwritten.
 name: Publish ARM64 toolchains from run artifacts
 
 on:
@@ -10,7 +11,7 @@ on:
       electrum_version:
         description: Electrum version used by the source run
         required: true
-        default: 4.8.2
+        default: 4.8.3
         type: string
       agave_version:
         description: Agave version used by the source run
